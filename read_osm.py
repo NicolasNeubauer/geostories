@@ -21,7 +21,6 @@ from collections import defaultdict, Counter
 import pyrosm # for downloading only, unfortunately processing crashes
 import osmium as o
 import shapely.wkb as wkblib
-# #!pip install beautifulsoup4 
 from bs4 import BeautifulSoup
 
 import pandas as pd, geopandas as gpd
