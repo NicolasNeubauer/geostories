@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.2
+#       jupytext_version: 1.13.8
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -41,6 +41,7 @@ POI_FILE = f'{DATA_DIR}/POIs_southern_california.geojson'
 
 
 def get_level2_map(filename):
+    """returns a dictionary that maps tags to an intermediate 'level2' category for amenities"""
     with open(filename) as fp:
         soup = BeautifulSoup(fp, "html.parser")    
     table = soup.body.find_all("table")[0]

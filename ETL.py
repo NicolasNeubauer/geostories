@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.2
+#       jupytext_version: 1.13.8
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -23,13 +23,16 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 # -
 
-DATA_DIR = '/Users/nneubaue/Data/osm'  
-POI_FILE = f'{DATA_DIR}/POIs_NYC.geojson'
-OUTPUT_FILE = f"{DATA_DIR}/full_dataset_NYC.geojson"
+DATA_DIR = '/Users/nicolasneubauer/Data/geostories'       # set to your own
+POI_FILE = f'{DATA_DIR}/POIs_NYC.geojson'                 # create via read_osm.py
+TAXI_ZONES_FILE = f"{DATA_DIR}/taxi_zones/taxi_zones.shp" # download from https://www1.nyc.gov/site/tlc/about/tlc-trip-record-data.page 
+JAN20_FILE = f"{DATA_DIR}/yellow_tripdata_2020-01.csv"    # see above
+JAN21_FILE = f"{DATA_DIR}/yellow_tripdata_2021-01.csv"    # see above
+OUTPUT_FILE = f"{DATA_DIR}/full_dataset_NYC.geojson" 
 
 # ## Taxi zones
 
-gdf_taxi = gpd.read_file(f"{DATA_DIR}/taxi_zones/taxi_zones.shp")
+gdf_taxi = gpd.read_file(TAXI_ZONES_FILE)) # 
 gdf_taxi.columns
 
 gdf_taxi.crs
@@ -43,10 +46,10 @@ gdf_taxi.plot()
 
 # ## Trip data
 
-df_jan20 = pd.read_csv(f"{DATA_DIR}/yellow_tripdata_2020-01.csv", low_memory=False)
+df_jan20 = pd.read_csv(JAN20_FILE, low_memory=False)
 df_jan20.head()
 
-df_jan21 = pd.read_csv(f"{DATA_DIR}/yellow_tripdata_2021-01.csv", low_memory=False)
+df_jan21 = pd.read_csv(JAN21_FILE, low_memory=False)
 df_jan21.head()
 
 # ## merging trip data to taxi zones
@@ -100,6 +103,8 @@ for field in ['pickups', 'dropoffs']:
         new_fieldname = f"{org_fieldname}_normalized"
         gdf_taxi_count[new_fieldname] = gdf_taxi_count[org_fieldname] / gdf_taxi_count['Shape_Area']
 
+gdf_taxi_count[['zone','num_pickups_20','num_pickups_21','num_dropoffs_20', 'num_dropoffs_21', 'do_relative', 'pu_relative']].head()
+
 # ## Extract relevant POIs
 
 # ### inspect
@@ -123,6 +128,22 @@ df_count
 
 ax = gdf_taxi[gdf_taxi['OBJECTID']==4].plot(color='white', edgecolor='grey')
 gpd.sjoin(gdf_poi, gdf_taxi[gdf_taxi['OBJECTID']==4]).plot(ax=ax)
+
+import contextily 
+ax = gpd.sjoin(gdf_poi, gdf_taxi[gdf_taxi['OBJECTID']==4])\
+  .set_crs(epsg=4326)\
+  .to_crs(epsg=3857)\
+  .plot(figsize=(10, 7), column="level2")
+               
+    #.plot(color='white', edgecolor='grey')\
+gdf_taxi[gdf_taxi['OBJECTID']==4]\
+  .set_crs(epsg=4326)\
+  .to_crs(epsg=3857)\
+  .plot(ax=ax, facecolor='blue', edgecolor='black', alpha=0.1)
+contextily.add_basemap(
+    ax, source=contextily.providers.OpenStreetMap.BZH)
+
+gdf_poi
 
 df_count['count'].sum()
 
@@ -184,10 +205,16 @@ df_values_per_object
 
 gdf_taxi_count_with_tag_count = gdf_taxi_count_with_tag_count.join(df_values_per_object)
 
+# ### visualize and save
+
+gdf_taxi_count_with_tag_count.head()
+
+l2 = [c for c in gdf_taxi_count_with_tag_count.columns if c.startswith('level2')]
+
+gdf_taxi_count_with_tag_count[["zone", "num_pickups_20", "do_relative"] + l2].fillna(0).head()
+
 gdf_taxi_count_with_tag_count.to_file(OUTPUT_FILE, driver='GeoJSON')
 
 import keplergl
 
 keplergl.KeplerGl(height=1000, data={'data': gdf_taxi_count_with_tag_count})
-
-

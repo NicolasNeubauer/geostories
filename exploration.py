@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.11.1
+#       jupytext_version: 1.13.8
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -25,20 +25,17 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from sklearn import metrics 
-from sklearn import preprocessing
-from sklearn import tree
-from sklearn import linear_model
-from sklearn import feature_selection
-
+from sklearn import metrics, preprocessing, tree, linear_model, feature_selection, model_selection, pipeline, dummy
 
 import graphviz
 # -
 
-DATA_DIR = '/Users/nneubaue/Data/osm' 
+DATA_DIR = '/Users/nicolasneubauer/Data/geostories' 
 INPUT_FILE = f"{DATA_DIR}/full_dataset_NYC.geojson"        # NYC taxi by taxi district
-INPUT_FILE = f"{DATA_DIR}/full_dataset_california.geojson" # housing
-INPUT_FILE = f"{DATA_DIR}/full_dataset_trips_NYC.geojson"  # NYC taxi by trip
+#INPUT_FILE = f"{DATA_DIR}/full_dataset_california.geojson" # housing
+INPUT_FILE = f"{DATA_DIR}/full_dataset_trips_NYC_50.geojson"  # NYC taxi by trip
+#INPUT_FILE = f"{DATA_DIR}/full_dataset_trips_NYC_CELLSIZE_100.geojson"  # NYC taxi by trip
+LATLON_OUTPUT_FILE = f"{DATA_DIR}/full_dataset_trips_NYC_50_latlon.geojson"
 
 
 def get_features(df, level, log, winsorized, normalized):
@@ -99,26 +96,17 @@ gdf = gdf.rename(columns = {col: col.replace('_', '-') if col.startswith('level'
 
 list(gdf.columns)
 
-# +
-# 64000
-gdf["center"] = \
-   (gdf["num_dropoffs_20"]>34000) & \
-   (gdf["num_dropoffs_20"]<189000) & \
-   (gdf["do_relative"]<3.35)
-
-
-gdf.plot(column="center")
-# -
-
 sns.relplot(data=gdf, x='level2-Sustenance', y='count_dropoff', hue='level2-Transportation', aspect=1.61)
 
 
 sns.regplot(data=gdf, x='level2-Sustenance', y='count_dropoff', x_jitter=0.2, scatter_kws={'alpha': 0.02})
 
 
-sns.scatterplot(data=df, x='count_pickup', y='count_dropoff', alpha=0.1)
+sns.scatterplot(data=gdf, x='count_pickup', y='count_dropoff', alpha=0.1)
 
 gdf['count_pickup'].mean()
+
+
 
 # +
 #target = 'num_pickups_20'
@@ -136,21 +124,25 @@ df = transform_features(df, area_column="ALAND")
 
 # -
 
-target = 'pu_relative'
-target = 'median_house_value'
-target = 'count_pickup' # count_dropoff
+[x for x in df.columns if x.startswith('level2-Sustenance')]
+
+df.columns
+
+#target = 'pu_relative'
+#target = 'median_house_value'
+#target = 'count_pickup' # count_dropoff
 target = 'count_dropoff'
 
 # +
-
 features = get_features(df, 2, log=True, winsorized=False, normalized=False)# + ['median_income']
 #features = ['pca_1', 'pca_2']
 #features = ['median_income']
+#features = ['level2-Sustenance_log']
 
 X = np.array(df.fillna(0)[features])
-poly = preprocessing.PolynomialFeatures(2)
-X = poly.fit_transform(X)
-features = poly.get_feature_names_out(features)
+#poly = preprocessing.PolynomialFeatures(2)
+#X = poly.fit_transform(X)
+#features = poly.get_feature_names_out(features)
 
 
 
@@ -170,32 +162,101 @@ Y = df[target]
 #X = feature_selection.SelectKBest(feature_selection.f_regression, k=20).fit_transform(X, Y)
 
 
-print(f"MAE when predicting average: {(df[target]-df[target].mean()).abs().mean()}")
+mae_avg = (df[target]-df[target].mean()).abs().mean()
+print(f"MAE when predicting mean: {mae_avg}")
 print()
 
 reg = linear_model.LinearRegression().fit(X, Y)
 print(f"r**2 of linear regression: {reg.score(X, Y)}")
-print(f"MAE of linear regression: {metrics.mean_absolute_error(Y, reg.predict(X))}")
+mae_linreg = metrics.mean_absolute_error(Y, reg.predict(X))
+print(f"MAE of linear regression: {mae_linreg}")
+print(f"improvement over predicting mean: {1.0 - (mae_linreg/mae_avg)}")
 
 print()
 MAX_DEPTH = 2
 reg2 = tree.DecisionTreeRegressor(max_depth=MAX_DEPTH).fit(X, Y)
 print(f"r**2 for tree of max depth {MAX_DEPTH}: {reg2.score(X, Y)}")
-print(f"MAE for tree of max depth {MAX_DEPTH}: {metrics.mean_absolute_error(Y, reg2.predict(X))}")
+mae_tree = metrics.mean_absolute_error(Y, reg2.predict(X))
+print(f"MAE for tree of max depth {MAX_DEPTH}: {mae_tree}")
+print(f"improvement over predicting mean: {1.0 - (mae_tree/mae_avg)}")
+
 
 from sklearn import linear_model
 reg3 = linear_model.LassoLarsCV().fit(X, Y)
 print()
 print(f"r**2 of lasso regression: {reg3.score(X, Y)}")
-print(f"MAE of lasso regression: {metrics.mean_absolute_error(Y, reg3.predict(X))}")
+mae_lasso = metrics.mean_absolute_error(Y, reg3.predict(X))
+print(f"MAE of lasso regression: {mae_lasso}")
+print(f"improvement over predicting mean: {1.0 - (mae_lasso/mae_avg)}")
+
 
 from sklearn import linear_model
 reg4 = linear_model.Ridge(alpha=100).fit(X, Y)
+mae_ridge = metrics.mean_absolute_error(Y, reg4.predict(X))
 print()
 print(f"r**2 of ridge regression: {reg4.score(X, Y)}")
-print(f"MAE of ridge regression: {metrics.mean_absolute_error(Y, reg4.predict(X))}")
+print(f"MAE of ridge regression: {mae_ridge}")
+print(f"improvement over predicting mean: {1.0 - mae_ridge/mae_avg}")
 
 
+# +
+# now doing it properly by using cross-validation instead of evaluating test performance. 
+
+features = get_features(df, 2, log=True, winsorized=False, normalized=False)# + ['median_income']
+X = np.array(df.fillna(0)[features])
+y = df[target]
+
+regressors = [
+    dummy.DummyRegressor(strategy="mean"),
+    linear_model.LinearRegression(),
+    tree.DecisionTreeRegressor(max_depth=1),    
+    tree.DecisionTreeRegressor(max_depth=2),
+    tree.DecisionTreeRegressor(max_depth=3),    
+    tree.DecisionTreeRegressor(max_depth=4),        
+    tree.DecisionTreeRegressor(max_depth=5),
+    tree.DecisionTreeRegressor(max_depth=6),        
+    tree.DecisionTreeRegressor(max_depth=7),    
+    tree.DecisionTreeRegressor(max_depth=10),    
+    tree.DecisionTreeRegressor(max_depth=50),        
+    tree.DecisionTreeRegressor(max_depth=100),            
+    linear_model.LassoLarsCV(),
+    linear_model.Ridge(alpha=100)
+]
+
+results = []
+
+for regressor in regressors:
+    
+    regressor_pipeline = pipeline.make_pipeline(
+        feature_selection.VarianceThreshold(), 
+        preprocessing.StandardScaler(with_mean=False), 
+        regressor)
+    
+    scorer = metrics.make_scorer(metrics.mean_absolute_error, greater_is_better=False)
+    score = model_selection.cross_val_score(
+        regressor_pipeline, X, y, cv=5, scoring=scorer
+    ).mean()
+
+    results.append([str(regressor), score])
+    
+results
+# -
+
+[(a, 1.0-(b/results[0][1])) for a,b in results]
+
+_[3:-2]
+
+[(a.split('=')[1][:-1], b) for a, b in _]
+
+df_results = pd.DataFrame(_, columns=['max_depth', 'improvement'])
+
+df_results
+
+sns.barplot(data=df_results, x="max_depth", y="improvement", color="blue")
+sns.despine(right=True, top=True)
+
+# +
+# below: more experiments that didn't make it into the talk
 # -
 
 from sklearn.decomposition import PCA
@@ -210,19 +271,23 @@ df_pca.plot.scatter(x='x1', y='x2', alpha=0.1)
 df['pca_1'] = pca.transform(X).T[0]
 df['pca_2'] = pca.transform(X).T[1]
 
+pca.components_
+
 sns.regplot(data=df, x='pca_1', y='count_pickup')
 
 df['count_pickup_log'] = np.log(df['count_pickup'])
 
-sns.scatterplot(data=df.sort_values('count_pickup_log', ascending=True), x='pca_1', y='pca_2', hue='count_pickup_log', alpha=0.3, palette='coolwarm')
+sns.scatterplot(data=df.sort_values('count_pickup_log', ascending=True), x='pca_1', y='pca_2', hue='count_pickup_log', alpha=0.2, palette='coolwarm')
 
-pd.DataFrame(df.iloc[0][features]).reset_index().plot.bar(x='index')
+pd.DataFrame(df.iloc[2][features]).reset_index().plot.bar(x='index')
 
 df.sort_values('count_dropoff', ascending=False)[['index', 'count_dropoff'] + features ][-100:]
 
-index=7728
+index=268
 row = df[df['index']==index].iloc[0][features]
 pd.DataFrame(row).reset_index().plot.bar(x='index')
+
+len(df)
 
 # +
 features = get_features(df, 2, log=True, winsorized=False, normalized=False)# + ['median_income']
@@ -248,7 +313,7 @@ X
 
 sns.kdeplot(x=df['pca_1'], y=df['pca_2'])
 
-sns.kdeplot(x=df['pca_2'], y=df['count_dropoff'])
+sns.kdeplot(x=df['pca_1'], y=df['count_dropoff'])
 
 print(pca.components_)
 df_pca_features = pd.DataFrame(pca.components_.T)
@@ -274,6 +339,39 @@ dot_data = tree.export_graphviz(reg2, out_file=None,
 graph = graphviz.Source(dot_data)  
 graph 
 
+# +
+from sklearn.tree import _tree
+
+def tree_to_code(tree, feature_names):
+    tree_ = tree.tree_
+    feature_name = [
+        feature_names[i] if i != _tree.TREE_UNDEFINED else "undefined!"
+        for i in tree_.feature
+    ]
+    print("def tree({}):".format(", ".join(feature_names)))
+
+    def recurse(node, depth):
+        indent = "  " * depth
+        if tree_.feature[node] != _tree.TREE_UNDEFINED:
+            name = feature_name[node]
+            threshold = tree_.threshold[node]
+            print("{}if {} <= {}:".format(indent, name, threshold))
+            recurse(tree_.children_left[node], depth + 1)
+            print("{}else: if {} > {}:".format(indent, name, threshold))
+            recurse(tree_.children_right[node], depth + 1)
+        else:
+            print("{}return {}".format(indent, tree_.value[node]))
+
+    recurse(0, 1)
+
+
+# -
+
+tree_to_code(reg2, feature_names=features)
+
+from sklearn.tree import export_text
+print(export_text(reg2, feature_names=features))
+
 level2_features = [x for x in df.columns if x.startswith('level2-')]
 
 gdf.plot(column="level2-Entertainment")
@@ -296,5 +394,21 @@ g = sns.FacetGrid(df_features[~df_features['p'].str.contains('normalized')],
                   sharex=False, 
                   sharey=False)
 g.map(sns.histplot, "value")
+
+df
+
+# +
+# create a compact lat/lon-projected GeoJSON file for kepler.gl
+# -
+
+df_ll = df.to_crs(4326)
+
+[f for f in df_ll.columns if not f.startswith('level')]
+
+df_ll = df_ll[['count_pickup', 'count_dropoff', 'geometry']]
+
+df_ll.to_file(LATLON_OUTPUT_FILE, driver='GeoJSON')
+
+df_ll
 
 

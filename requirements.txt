@@ -1,6 +1,8 @@
 beautifulsoup4==4.11.1
+contextily=1.2.0
 geopandas==0.10.2
 graphviz==0.20
+ipyleaflet=0.16.0
 jupyter==1.0.0
 jupytext==1.13.8
 keplergl==0.3.2
